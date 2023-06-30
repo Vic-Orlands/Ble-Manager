@@ -6,9 +6,10 @@ import {
   Text,
   Alert,
   View,
+  FlatList,
   Platform,
   StatusBar,
-  ScrollView,
+  Dimensions,
   StyleSheet,
   SafeAreaView,
   NativeModules,
@@ -39,19 +40,6 @@ const App = () => {
         peripheral.connected = true;
         peripherals.set(peripheral.id, peripheral);
         setConnectedDevices(Array.from(peripherals.values()));
-      }
-    });
-
-    BleManager.getConnectedPeripherals([]).then(results => {
-      if (results.length === 0) {
-        console.log('No connected bluetooth devices');
-      } else {
-        for (let i = 0; i < results.length; i++) {
-          let peripheral = results[i];
-          peripheral.connected = true;
-          peripherals.set(peripheral.id, peripheral);
-          setConnectedDevices(Array.from(peripherals.values()));
-        }
       }
     });
   };
@@ -157,8 +145,6 @@ const App = () => {
 
   // disconnect from device
   const disconnectFromPeripheral = peripheral => {
-    // BleManager.disconnect(peripheral.id).then(() => {
-
     BleManager.removeBond(peripheral.id)
       .then(() => {
         peripheral.connected = false;
@@ -171,7 +157,6 @@ const App = () => {
       .catch(() => {
         console.log('fail to remove the bond');
       });
-    // });
   };
 
   const isDarkMode = useColorScheme() === 'dark';
@@ -219,15 +204,12 @@ const App = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[backgroundStyle, styles.container]}>
       <StatusBar
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
         backgroundColor={backgroundStyle.backgroundColor}
       />
-      <ScrollView
-        style={backgroundStyle}
-        contentContainerStyle={styles.scrollContainer}
-        contentInsetAdjustmentBehavior="automatic">
+      <View style={{pdadingHorizontal: 20}}>
         <Text
           style={[
             styles.title,
@@ -252,11 +234,11 @@ const App = () => {
           Discovered Devices:
         </Text>
         {discoveredDevices.length > 0 ? (
-          discoveredDevices.map(device => (
-            <React.Fragment key={device.id}>
-              <RenderItem peripheral={device} />
-            </React.Fragment>
-          ))
+          <FlatList
+            data={discoveredDevices}
+            renderItem={({item}) => <RenderItem peripheral={item} />}
+            keyExtractor={item => item.id}
+          />
         ) : (
           <Text style={styles.noDevicesText}>No Bluetooth devices found</Text>
         )}
@@ -269,22 +251,25 @@ const App = () => {
           Connected Devices:
         </Text>
         {connectedDevices.length > 0 ? (
-          connectedDevices.map(device => (
-            <React.Fragment key={device.id}>
-              <RenderItem peripheral={device} />
-            </React.Fragment>
-          ))
+          <FlatList
+            data={connectedDevices}
+            renderItem={({item}) => <RenderItem peripheral={item} />}
+            keyExtractor={item => item.id}
+          />
         ) : (
           <Text style={styles.noDevicesText}>No connected devices</Text>
         )}
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 };
 
+const windowHeight = Dimensions.get('window').height;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    height: windowHeight,
+    paddingHorizontal: 10,
   },
   scrollContainer: {
     padding: 16,
