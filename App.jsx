@@ -1,4 +1,3 @@
-/* eslint-disable react/no-unstable-nested-components */
 /* eslint-disable react-native/no-inline-styles */
 
 import React, {useState, useEffect} from 'react';
@@ -9,8 +8,6 @@ import {
   FlatList,
   Platform,
   StatusBar,
-  Dimensions,
-  StyleSheet,
   SafeAreaView,
   NativeModules,
   useColorScheme,
@@ -18,6 +15,8 @@ import {
   NativeEventEmitter,
   PermissionsAndroid,
 } from 'react-native';
+import {styles} from './src/styles/styles';
+import {DeviceList} from './src/DeviceList';
 import BleManager from 'react-native-ble-manager';
 import {Colors} from 'react-native/Libraries/NewAppScreen';
 
@@ -30,11 +29,26 @@ const App = () => {
   const [connectedDevices, setConnectedDevices] = useState([]);
   const [discoveredDevices, setDiscoveredDevices] = useState([]);
 
+  const handleLocationPermission = async () => {
+    if (Platform.OS === 'android' && Platform.Version >= 23) {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        );
+
+        if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+          console.log('Location permission granted');
+        } else {
+          console.log('Location permission denied');
+        }
+      } catch (error) {
+        console.log('Error requesting location permission:', error);
+      }
+    }
+  };
+
   const handleGetConnectedDevices = () => {
     BleManager.getBondedPeripherals([]).then(results => {
-      // Each peripheral in returned array will have id and name properties
-      console.log('Bonded peripherals: ' + results.length);
-
       for (let i = 0; i < results.length; i++) {
         let peripheral = results[i];
         peripheral.connected = true;
@@ -45,6 +59,8 @@ const App = () => {
   };
 
   useEffect(() => {
+    handleLocationPermission();
+
     BleManager.enableBluetooth().then(() => {
       console.log('Bluetooth is turned on!');
     });
@@ -77,26 +93,6 @@ const App = () => {
       },
     );
 
-    if (Platform.OS === 'android' && Platform.Version >= 23) {
-      PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-      ).then(result => {
-        if (result) {
-          console.log('Permission is OK');
-        } else {
-          PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          ).then(result => {
-            if (result) {
-              console.log('User accepted');
-            } else {
-              console.log('User refused');
-            }
-          });
-        }
-      });
-    }
-
     return () => {
       stopDiscoverListener.remove();
       stopConnectListener.remove();
@@ -104,7 +100,7 @@ const App = () => {
     };
   }, []);
 
-  const startScan = () => {
+  const scan = () => {
     if (!isScanning) {
       BleManager.scan([], 5, true)
         .then(() => {
@@ -117,90 +113,39 @@ const App = () => {
     }
   };
 
-  // pair with device first before connecting to it
-  const connectToPeripheral = peripheral => {
+  const connect = peripheral => {
     BleManager.createBond(peripheral.id)
-      .then(() => {
-        console.log('BLE device paired successfully');
-        pairSuccessful(peripheral);
-      })
-      .catch(() => {
-        console.log('failed to bond');
-      });
-  };
-
-  const pairSuccessful = peripheral => {
-    BleManager.connect(peripheral.id)
       .then(() => {
         peripheral.connected = true;
         peripherals.set(peripheral.id, peripheral);
-        setConnectedDevices(Array.from(peripherals.values()));
-        setDiscoveredDevices(Array.from(peripherals.values()));
-        console.log(`Connected to ${peripheral.name}`);
+        let devices = Array.from(peripherals.values());
+        setConnectedDevices(Array.from(devices));
+        setDiscoveredDevices(Array.from(devices));
+        console.log('BLE device paired successfully');
       })
-      .catch(error => {
-        console.log(error);
+      .catch(() => {
+        throw Error('failed to bond');
       });
   };
 
-  // disconnect from device
-  const disconnectFromPeripheral = peripheral => {
+  const disconnect = peripheral => {
     BleManager.removeBond(peripheral.id)
       .then(() => {
         peripheral.connected = false;
         peripherals.set(peripheral.id, peripheral);
-        // setConnectedDevices(Array.from(peripherals.values()));
-        setDiscoveredDevices(Array.from(peripherals.values()));
+        let devices = Array.from(peripherals.values());
+        setConnectedDevices(Array.from(devices));
+        setDiscoveredDevices(Array.from(devices));
         Alert.alert(`Disconnected from ${peripheral.name}`);
-        // console.log('removeBond success');
       })
       .catch(() => {
-        console.log('fail to remove the bond');
+        throw Error('fail to remove the bond');
       });
   };
 
   const isDarkMode = useColorScheme() === 'dark';
   const backgroundStyle = {
     backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
-  };
-
-  // render list of bluetooth devices
-  const RenderItem = ({peripheral}) => {
-    const {name, rssi, connected} = peripheral;
-
-    return (
-      <>
-        {name && (
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              marginBottom: 10,
-            }}>
-            <View style={styles.deviceItem}>
-              <Text style={styles.deviceName}>{name}</Text>
-              <Text style={styles.deviceInfo}>RSSI: {rssi}</Text>
-            </View>
-
-            <TouchableOpacity
-              onPress={() =>
-                connected
-                  ? disconnectFromPeripheral(peripheral)
-                  : connectToPeripheral(peripheral)
-              }
-              style={styles.deviceButton}>
-              <Text
-                style={[
-                  styles.scanButtonText,
-                  {fontWeight: 'bold', fontSize: 16},
-                ]}>
-                {connected ? 'Disconnect' : 'Connect'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </>
-    );
   };
 
   return (
@@ -218,9 +163,9 @@ const App = () => {
           React Native BLE Manager Tutorial
         </Text>
         <TouchableOpacity
+          onPress={scan}
           activeOpacity={0.5}
-          style={styles.scanButton}
-          onPress={startScan}>
+          style={styles.scanButton}>
           <Text style={styles.scanButtonText}>
             {isScanning ? 'Scanning...' : 'Scan Bluetooth Devices'}
           </Text>
@@ -236,7 +181,13 @@ const App = () => {
         {discoveredDevices.length > 0 ? (
           <FlatList
             data={discoveredDevices}
-            renderItem={({item}) => <RenderItem peripheral={item} />}
+            renderItem={({item}) => (
+              <DeviceList
+                peripheral={item}
+                connect={connect}
+                disconnect={disconnect}
+              />
+            )}
             keyExtractor={item => item.id}
           />
         ) : (
@@ -253,7 +204,13 @@ const App = () => {
         {connectedDevices.length > 0 ? (
           <FlatList
             data={connectedDevices}
-            renderItem={({item}) => <RenderItem peripheral={item} />}
+            renderItem={({item}) => (
+              <DeviceList
+                peripheral={item}
+                connect={connect}
+                disconnect={disconnect}
+              />
+            )}
             keyExtractor={item => item.id}
           />
         ) : (
@@ -263,60 +220,5 @@ const App = () => {
     </SafeAreaView>
   );
 };
-
-const windowHeight = Dimensions.get('window').height;
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    height: windowHeight,
-    paddingHorizontal: 10,
-  },
-  scrollContainer: {
-    padding: 16,
-  },
-  title: {
-    fontSize: 30,
-    textAlign: 'center',
-    marginBottom: 20,
-    marginTop: 40,
-  },
-  subtitle: {
-    fontSize: 24,
-    marginBottom: 10,
-    marginTop: 20,
-  },
-  scanButton: {
-    backgroundColor: '#2196F3',
-    padding: 10,
-    borderRadius: 5,
-    marginBottom: 20,
-  },
-  scanButtonText: {
-    color: 'white',
-    textAlign: 'center',
-  },
-  deviceItem: {
-    marginBottom: 10,
-  },
-  deviceName: {
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
-  deviceInfo: {
-    fontSize: 14,
-  },
-  noDevicesText: {
-    textAlign: 'center',
-    marginTop: 10,
-    fontStyle: 'italic',
-  },
-  deviceButton: {
-    backgroundColor: '#2196F3',
-    padding: 8,
-    borderRadius: 5,
-    marginBottom: 20,
-    paddingHorizontal: 20,
-  },
-});
 
 export default App;
